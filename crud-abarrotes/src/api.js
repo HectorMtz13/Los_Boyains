@@ -380,11 +380,11 @@ function apiRouter() {
   router.post("/codigos", async (req, res) => {
     try {
       const db = await openDb();
-      const { id_producto, codigo_barras, url_producto } = req.body;
+      const { id_producto, codigo_barras } = req.body;
       if (!id_producto || !codigo_barras) return res.status(400).json({ error: "id_producto y codigo_barras son obligatorios" });
       await db.execute(
-        "INSERT INTO Codigo_Barras (id_producto, codigo_barras, url_producto) VALUES (?, ?, ?)",
-        [id_producto, codigo_barras, url_producto || null]
+        "INSERT INTO Codigo_Barras (id_producto, codigo_barras) VALUES (?, ?)",
+        [id_producto, codigo_barras]
       );
       res.json({ mensaje: "Código de barras registrado" });
     } catch (err) {
@@ -399,10 +399,10 @@ function apiRouter() {
   router.put("/codigos/:id", async (req, res) => {
     try {
       const db = await openDb();
-      const { id_producto, codigo_barras, url_producto } = req.body;
+      const { id_producto, codigo_barras } = req.body;
       await db.execute(
-        "UPDATE Codigo_Barras SET id_producto=?, codigo_barras=?, url_producto=? WHERE id_codigo=?",
-        [id_producto, codigo_barras, url_producto || null, req.params.id]
+        "UPDATE Codigo_Barras SET id_producto=?, codigo_barras=? WHERE id_codigo=?",
+        [id_producto, codigo_barras, req.params.id]
       );
       res.json({ mensaje: "Código actualizado" });
     } catch (err) {
