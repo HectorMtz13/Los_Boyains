@@ -583,9 +583,6 @@ async function renderCodigos() {
     String(x.id_codigo),
     x.Nombre_producto || "—",
     x.codigo_barras || "—",
-    x.url_producto
-      ? h("a", { href: x.url_producto, target: "_blank", class: "btn" }, ["🔗 Ver"])
-      : "—",
     x.fecha_registro ? String(x.fecha_registro).slice(0, 10) : "—",
     h("div", { class: "actions" }, [
       h("button", { class: "btn", onClick: () => editCodigo(x) }, ["Editar"]),
@@ -593,7 +590,7 @@ async function renderCodigos() {
     ])
   ]);
   $("#content").innerHTML = "";
-  $("#content").appendChild(table(["ID", "Producto", "Código de barras", "URL", "Fecha registro", "Acciones"], rows));
+  $("#content").appendChild(table(["ID", "Producto", "Código de barras", "Fecha registro", "Acciones"], rows));
 }
 
 async function newCodigo() {
@@ -634,13 +631,11 @@ async function newCodigo() {
   ]);
 
   const codigoInput = h("input", { class: "input", name: "codigo_barras", value: "", placeholder: "O escríbelo manualmente" });
-  const urlInput    = h("input", { class: "input", name: "url_producto",   value: "", placeholder: "https://..." });
 
   const form = h("div", { class: "form" }, [
     scannerSection,
     selectField("Producto *", "id_producto", productos.map((p) => ({ value: p.id, label: p.Nombre_producto })), "", false),
-    h("div", { class: "field" }, [h("div", { class: "label" }, ["Código de barras *"]), codigoInput]),
-    h("div", { class: "field" }, [h("div", { class: "label" }, ["URL del producto"]),   urlInput])
+    h("div", { class: "field" }, [h("div", { class: "label" }, ["Código de barras *"]), codigoInput])
   ]);
 
   // ---- Función que lee el frame actual ----
@@ -664,34 +659,31 @@ async function newCodigo() {
   }
 
   // ---- Botón "Leer ahora" — captura manual ----
-  captureBtn.addEventListener("click", () => {
+  captureBtn.addEventListener("click", async () => {
     if (!tryReadFrame()) { toast("La cámara aún no está lista", true); return; }
 
+    // 1. BarcodeDetector nativo (Chrome Android)
     if (typeof BarcodeDetector !== "undefined") {
-      const det = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","qr_code"] });
-      det.detect(snapCanvas).then(bs => {
-        if (bs.length) onRead(bs[0].rawValue);
-        else toast("No detecté código. Centra más el código y vuelve a intentar.", true);
-      }).catch(() => toast("Error al leer. Inténtalo de nuevo.", true));
-      return;
+      try {
+        const det = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","qr_code"] });
+        const bs = await det.detect(snapCanvas);
+        if (bs.length) { onRead(bs[0].rawValue); return; }
+      } catch(e) {}
     }
 
+    // 2. ZXing @0.18.6 (funciona en iOS Safari, Firefox, etc.)
     if (typeof ZXing !== "undefined") {
       try {
-        const hints = new Map([[ZXing.DecodeHintType.TRY_HARDER, true]]);
-        const reader = new ZXing.MultiFormatReader();
-        reader.setHints(hints);
-        const imgData = snapCtx.getImageData(0, 0, snapCanvas.width, snapCanvas.height);
-        const lum = new ZXing.RGBLuminanceSource(imgData.data, snapCanvas.width, snapCanvas.height);
-        const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
-        onRead(reader.decode(bmp).getText());
-      } catch(e) {
-        toast("No detecté código. Centra más el código y vuelve a intentar.", true);
-      }
-      return;
+        const reader = new ZXing.BrowserMultiFormatReader();
+        const imgEl = new Image();
+        imgEl.src = snapCanvas.toDataURL();
+        await new Promise(r => { imgEl.onload = r; });
+        const result = await reader.decodeFromImage(imgEl);
+        if (result) { onRead(result.getText()); return; }
+      } catch(e) {}
     }
 
-    toast("Escáner no disponible. Escribe el código manualmente.", true);
+    toast("No detecté código. Centra bien el código y pulsa de nuevo.", true);
   });
 
   // ---- Botón principal: iniciar/detener cámara ----
@@ -719,15 +711,33 @@ async function newCodigo() {
       scanBtn.textContent = "⏹ Detener cámara";
       captureBtn.style.display = "flex";
 
-      // Auto-detección cada 600ms con BarcodeDetector si está disponible
+      // Auto-detección cada 700ms: BarcodeDetector nativo si disponible, sino ZXing
       if (typeof BarcodeDetector !== "undefined") {
         const det = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","qr_code"] });
         (function autoLoop() {
           if (!scannerActive) return;
           det.detect(video).then(bs => {
             if (bs.length) { onRead(bs[0].rawValue); }
-            else { scanTimer = setTimeout(autoLoop, 600); }
-          }).catch(() => { scanTimer = setTimeout(autoLoop, 600); });
+            else { scanTimer = setTimeout(autoLoop, 700); }
+          }).catch(() => { scanTimer = setTimeout(autoLoop, 700); });
+        })();
+      } else if (typeof ZXing !== "undefined") {
+        // Fallback ZXing para iOS Safari / Firefox
+        const zxReader = new ZXing.BrowserMultiFormatReader();
+        (function autoLoopZX() {
+          if (!scannerActive) return;
+          if (!video.videoWidth) { scanTimer = setTimeout(autoLoopZX, 700); return; }
+          snapCanvas.width  = video.videoWidth;
+          snapCanvas.height = video.videoHeight;
+          snapCtx.drawImage(video, 0, 0);
+          const imgEl = new Image();
+          imgEl.src = snapCanvas.toDataURL();
+          imgEl.onload = () => {
+            zxReader.decodeFromImage(imgEl).then(result => {
+              if (result && scannerActive) onRead(result.getText());
+              else if (scannerActive) scanTimer = setTimeout(autoLoopZX, 700);
+            }).catch(() => { if (scannerActive) scanTimer = setTimeout(autoLoopZX, 700); });
+          };
         })();
       }
 
@@ -748,7 +758,6 @@ async function newCodigo() {
     try {
       const p = readForm(form);
       p.codigo_barras = codigoInput.value.trim();
-      p.url_producto  = urlInput.value.trim();
       if (!p.id_producto)   return toast("Selecciona un producto", true);
       if (!p.codigo_barras) return toast("El código de barras es obligatorio", true);
       await api.send("/api/codigos", "POST", p);
@@ -766,8 +775,7 @@ async function editCodigo(x) {
   const { data: productos } = await api.get("/api/productos");
   const form = h("div", { class: "form" }, [
     selectField("Producto *", "id_producto", productos.map((p) => ({ value: p.id, label: p.Nombre_producto })), x.id_producto || "", false),
-    field("Código de barras *", "codigo_barras", x.codigo_barras || "", false),
-    field("URL del producto", "url_producto", x.url_producto || "", false)
+    field("Código de barras *", "codigo_barras", x.codigo_barras || "", false)
   ]);
   const save = async () => {
     try {
