@@ -1,0 +1,83 @@
+    CREATE TABLE Producto(
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        Nombre_producto VARCHAR(50),
+        Cantidad_producto INT,
+        Precio_Producto FLOAT,
+        Categoria_Producto VARCHAR(50)
+    );
+
+    CREATE TABLE Empleado(
+        Id_Empleado INT PRIMARY KEY AUTO_INCREMENT,
+        Nombre_Empleado VARCHAR(50),
+        Puesto VARCHAR(50),
+        id_Area INT,
+        FOREIGN KEY (id_Area) REFERENCES Area(id_Area)
+    );
+
+    CREATE TABLE Cliente(
+        id_Cliente INT PRIMARY KEY AUTO_INCREMENT,
+        Nombre_Cliente VARCHAR(50),
+        telefono VARCHAR(20),
+        email VARCHAR(100)
+    );
+
+    CREATE TABLE Proveedor(
+        id_proveedor INT PRIMARY KEY AUTO_INCREMENT,
+        Nombre_proveedor VARCHAR(50),
+        telefono VARCHAR(20),
+        email VARCHAR(100)
+    );
+
+    CREATE TABLE Compras(
+        id_compra INT PRIMARY KEY AUTO_INCREMENT,
+        cliente_id INT,
+        id_producto INT,
+        cantidad_producto INT,
+        id_proveedor INT,
+        fecha_compra DATE,
+        FOREIGN KEY (cliente_id) REFERENCES Cliente(id_Cliente),
+        FOREIGN KEY (id_proveedor) REFERENCES Proveedor(id_proveedor),
+        FOREIGN KEY (id_producto) REFERENCES Producto(id)
+    );
+
+    CREATE TABLE Categoria(
+        id_categoria INT PRIMARY KEY AUTO_INCREMENT,
+        Nombre_Categoria VARCHAR(50)
+    );
+
+    -- Relación Producto-Categoría
+    CREATE TABLE Producto_Categoria(
+        id_producto INT,
+        id_categoria INT,
+        FOREIGN KEY (id_producto) REFERENCES Producto(id),
+        FOREIGN KEY (id_categoria) REFERENCES Categoria(id_categoria)
+    );
+
+    CREATE TABLE Venta(
+        id_Venta INT PRIMARY KEY AUTO_INCREMENT,
+        id_Cliente INT,
+        id_Empleado INT,
+        id_Producto INT,
+        cantidad INT,
+        fecha DATE,
+        total FLOAT,
+        FOREIGN KEY (id_Cliente) REFERENCES Cliente(id_Cliente),
+        FOREIGN KEY (id_Empleado) REFERENCES Empleado(Id_Empleado),
+        FOREIGN KEY (id_Producto) REFERENCES Producto(id)
+    );
+
+    CREATE TABLE Area(
+        id_Area INT PRIMARY KEY AUTO_INCREMENT,
+        Nombre_Area VARCHAR(50),
+        Descripcion TEXT
+    );
+
+    CREATE TABLE Codigo_Barras(
+        id_codigo INT PRIMARY KEY AUTO_INCREMENT,
+        id_producto INT,
+        codigo_barras VARCHAR(50) UNIQUE,
+        fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (id_producto) REFERENCES Producto(id)
+    );
+
+SELECT * FROM codigo_barras;
