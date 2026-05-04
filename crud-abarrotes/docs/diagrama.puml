@@ -1,0 +1,21 @@
+@startuml
+package "Frontend" {
+  [UI Responsive]
+  [Scanner Module]
+}
+
+package "Backend" {
+  [API REST]
+  [Business Logic]
+}
+
+database "SQLite" {
+  [DB]
+}
+
+[UI Responsive] --> [API REST]
+[Scanner Module] --> [UI Responsive]
+[API REST] --> [Business Logic]
+[Business Logic] --> [DB]
+
+@enduml
