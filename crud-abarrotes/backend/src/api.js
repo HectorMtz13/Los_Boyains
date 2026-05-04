@@ -1,5 +1,5 @@
 const express = require("express");
-const { openDb } = require("./db");
+const { openDb } = require("./config/db");
 
 function apiRouter() {
   const router = express.Router();
