@@ -6,6 +6,7 @@
         Categoria_Producto VARCHAR(50)
     );
 
+
     CREATE TABLE Empleado(
         Id_Empleado INT PRIMARY KEY AUTO_INCREMENT,
         Nombre_Empleado VARCHAR(50),
@@ -80,4 +81,159 @@
         FOREIGN KEY (id_producto) REFERENCES Producto(id)
     );
 
-SELECT * FROM codigo_barras;
+
+-- Tabla de usuarios del sistema
+-- La ligamos a Empleado porque cada cajero/gerente YA es un empleado
+CREATE TABLE IF NOT EXISTS Usuario (
+    id_usuario    INT AUTO_INCREMENT PRIMARY KEY,
+    id_empleado   INT NOT NULL UNIQUE,
+    username      VARCHAR(60) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    rol           ENUM('gerente','cajero','almacenista') NOT NULL DEFAULT 'cajero',
+    activo        TINYINT(1) NOT NULL DEFAULT 1,
+    FOREIGN KEY (id_empleado) REFERENCES Empleado(Id_Empleado) ON DELETE CASCADE
+);
+
+
+-- ══════════════════════════════════════════════════════════════
+-- PBI-004: Extensión del esquema operativo
+-- Ejecutar en orden. Todas usan IF NOT EXISTS para que sean
+-- seguras de re-ejecutar sin romper datos existentes.
+-- ══════════════════════════════════════════════════════════════
+
+-- ── 1. CONFIGURACION_TIENDA ───────────────────────────────────
+-- Guarda los datos del negocio: nombre, RFC, dirección, etc.
+-- Solo hay un registro (id=1). Se lee en tickets y reportes.
+-- Usamos clave-valor (clave VARCHAR, valor TEXT) para que sea
+-- flexible: puedes agregar cualquier configuración sin alterar
+-- la estructura de la tabla.
+CREATE TABLE IF NOT EXISTS Configuracion_Tienda (
+    id_config   INT AUTO_INCREMENT PRIMARY KEY,
+    clave       VARCHAR(60)  NOT NULL UNIQUE,  -- ej: "nombre_tienda", "rfc"
+    valor       TEXT,                          -- ej: "Abarrotes Don Pepe", "XAXX010101000"
+    descripcion VARCHAR(120)                   -- para que el admin sepa qué es cada clave
+);
+
+-- Valores iniciales: la tienda puede editarlos desde la app más adelante
+INSERT IGNORE INTO Configuracion_Tienda (clave, valor, descripcion) VALUES
+  ('nombre_tienda', 'Tienda de Abarrotes',  'Nombre del negocio que aparece en tickets'),
+  ('direccion',     'Zacatecas, México',     'Dirección del local'),
+  ('telefono',      '',                      'Teléfono de contacto'),
+  ('rfc',           'XAXX010101000',         'RFC del negocio (genérico si no tienes)'),
+  ('moneda',        'MXN',                   'Código de moneda'),
+  ('stock_minimo',  '5',                     'Alerta cuando stock baja de este número');
+
+
+-- ── 2. CAJA ───────────────────────────────────────────────────
+-- Representa una caja física de la tienda (puede haber más de una).
+-- Por ahora solo necesitas una, pero la tabla soporta varias.
+CREATE TABLE IF NOT EXISTS Caja (
+    id_caja      INT AUTO_INCREMENT PRIMARY KEY,
+    nombre       VARCHAR(60) NOT NULL DEFAULT 'Caja Principal',
+    descripcion  TEXT,
+    activa       TINYINT(1) NOT NULL DEFAULT 1
+);
+
+-- Insertamos la caja principal
+INSERT IGNORE INTO Caja (id_caja, nombre) VALUES (1, 'Caja Principal');
+
+
+-- ── 3. CORTE_CAJA ─────────────────────────────────────────────
+-- Cada vez que un cajero abre su turno se crea un registro aquí.
+-- Cuando cierra el turno se llena fecha_cierre y fondo_cierre.
+--
+-- ¿Por qué es importante?
+-- Permite saber exactamente cuánto dinero entró en el turno de
+-- cada empleado y si cuadra con las ventas registradas.
+CREATE TABLE IF NOT EXISTS Corte_Caja (
+    id_corte      INT AUTO_INCREMENT PRIMARY KEY,
+    id_caja       INT NOT NULL,
+    id_usuario    INT NOT NULL,              -- quién abrió la caja
+    fecha_apertura DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fondo_apertura DECIMAL(10,2) NOT NULL DEFAULT 0.00,  -- dinero inicial en caja
+    fecha_cierre   DATETIME,                -- NULL mientras el turno está abierto
+    fondo_cierre   DECIMAL(10,2),           -- dinero contado al cerrar
+    total_ventas   DECIMAL(10,2),           -- suma de ventas del turno (calculado)
+    notas          TEXT,
+    FOREIGN KEY (id_caja)    REFERENCES Caja(id_caja),
+    FOREIGN KEY (id_usuario) REFERENCES Usuario(id_usuario)
+);
+
+
+-- ── 4. PAGO_VENTA ─────────────────────────────────────────────
+-- Registra cómo se pagó cada venta: efectivo, tarjeta, transferencia...
+-- Una venta puede tener múltiples pagos (pago mixto: parte efectivo + parte tarjeta).
+--
+-- ¿Por qué separada de Venta?
+-- La tabla Venta ya existe y no queremos modificarla (regla del PBI-004:
+-- no romper tablas existentes). Agregamos esta tabla relacionada.
+CREATE TABLE IF NOT EXISTS Pago_Venta (
+    id_pago        INT AUTO_INCREMENT PRIMARY KEY,
+    id_venta       INT NOT NULL,
+    forma_pago     ENUM('efectivo','tarjeta','transferencia','otro')
+                    NOT NULL DEFAULT 'efectivo',
+    monto          DECIMAL(10,2) NOT NULL,
+    referencia     VARCHAR(100),            -- número de autorización de tarjeta, etc.
+    fecha_pago     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_venta) REFERENCES Venta(id_Venta) ON DELETE CASCADE
+    -- ON DELETE CASCADE: si se elimina la venta, se eliminan sus pagos también
+);
+
+
+-- ── 5. AUDITORIA ──────────────────────────────────────────────
+-- Bitácora de operaciones importantes: quién creó, editó o eliminó qué.
+-- Es de solo inserción — nunca se modifica ni elimina un registro de auditoría.
+--
+-- ¿Cómo funciona?
+-- Cuando el backend ejecuta una operación importante (crear venta, eliminar
+-- producto, cambiar precio), inserta un registro aquí. Así el gerente puede
+-- ver el historial completo de cambios.
+CREATE TABLE IF NOT EXISTS Auditoria (
+    id_auditoria  INT AUTO_INCREMENT PRIMARY KEY,
+    id_usuario    INT,                      -- quién hizo la acción (NULL si fue el sistema)
+    tabla_afectada VARCHAR(60) NOT NULL,    -- ej: "Producto", "Venta"
+    operacion     ENUM('INSERT','UPDATE','DELETE') NOT NULL,
+    id_registro   INT,                      -- el id del registro afectado
+    detalle       TEXT,                     -- descripción legible: "Cambió precio de $10 a $12"
+    fecha         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_usuario) REFERENCES Usuario(id_usuario) ON DELETE SET NULL
+    -- ON DELETE SET NULL: si se borra el usuario, la auditoría queda con NULL
+    -- (preferible a perder el historial)
+);
+SELECT * FROM usuario;
+
+SELECT * FROM Empleado;
+-- Primero inserta un empleado si no tienes ninguno
+INSERT INTO Empleado (Nombre_Empleado, Puesto) VALUES ('Admin', 'Gerente');
+
+-- Luego crea el usuario (contraseña: admin123)
+INSERT INTO Usuario (id_empleado, username, password_hash, rol)
+VALUES (1, 'admin', SHA2('admin123', 256), 'gerente');
+
+SELECT * FROM usuario;
+SELECT id_usuario, CHAR_LENGTH(username), username, activo 
+FROM Usuario 
+WHERE username = 'hola';
+SELECT id_usuario, username, password_hash, rol, activo FROM Usuario;
+
+ALTER TABLE Producto
+  ADD COLUMN activo TINYINT(1) NOT NULL DEFAULT 1;
+ALTER TABLE Producto
+  ADD COLUMN precio_compra DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  ADD COLUMN stock_minimo INT NOT NULL DEFAULT 5,
+  ADD COLUMN unidad_medida VARCHAR(30) NOT NULL DEFAULT 'pieza',
+  ADD COLUMN fecha_modificacion DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP;
+
+  ALTER TABLE Venta
+  ADD COLUMN descuento DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+
+CREATE TABLE Detalle_Venta (
+    id_detalle      INT AUTO_INCREMENT PRIMARY KEY,
+    id_venta        INT NOT NULL,
+    id_producto     INT NOT NULL,
+    cantidad        INT NOT NULL DEFAULT 1,
+    precio_unitario DECIMAL(10,2) NOT NULL,
+    subtotal        DECIMAL(10,2) NOT NULL,
+    FOREIGN KEY (id_venta)    REFERENCES Venta(id_Venta)  ON DELETE CASCADE,
+    FOREIGN KEY (id_producto) REFERENCES Producto(id)     ON DELETE RESTRICT
+);

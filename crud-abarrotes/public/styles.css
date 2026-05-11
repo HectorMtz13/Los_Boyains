@@ -240,9 +240,244 @@ body{
 .toast.show{ opacity:1; transform:translateY(0); }
 .toast.error{ background: var(--danger); }
 
-@media (max-width: 900px){
-  .form{ grid-template-columns: 1fr; }
-  .input{ width: 100%; }
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE — ESCRITORIO ANCHO (≥ 901px)
+   Aquí no necesitamos casi nada porque el diseño base ya es
+   de escritorio. Solo ajustamos el input de búsqueda.
+════════════════════════════════════════════════════════ */
+@media (min-width: 901px) {
+  /* La barra inferior nunca se muestra en escritorio */
+  .bottom-nav { display: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE — TABLET / LAPTOP CHICO (641px – 900px)
+   El formulario colapsa a 1 columna. El input se expande.
+════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .form { grid-template-columns: 1fr; }
+  .input { width: 100%; max-width: 100%; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE — MÓVIL (≤ 640px)
+   Aquí está el corazón del PBI-002.
+════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+
+  /* ── 1. TOPBAR en móvil: ocultamos los chips del escritorio ──
+     No eliminamos el topbar completo porque queremos conservar
+     la marca "🛒 Tienda de Abarrotes". Solo quitamos los botones
+     de navegación porque los reemplazamos con la barra inferior. */
+  .top-actions { display: none; }
+
+  /* La marca se centra y el topbar se vuelve más compacto */
+  .topbar {
+    justify-content: center;
+    padding: 10px 14px;
+  }
+  .brand-subtitle { display: none; } /* ahorra espacio vertical */
+
+  /* ── 2. LAYOUT: espacio extra abajo para que la barra inferior
+     no tape el último elemento. 70px = altura de la barra inferior. */
+  .layout {
+    margin-top: 12px;
+    padding: 0 10px 90px; /* <-- los 90px son el espacio libre bajo el contenido */
+  }
+
+  /* ── 3. CARD HEAD: en móvil el título y filtros van en columna ──
+     En escritorio están en fila (flex-direction: row por defecto).
+     En móvil los apilamos para que cada elemento tenga su espacio. */
+  .card-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  /* ── 4. FILTROS: buscador + botones en fila compacta ──
+     El input ocupa todo el ancho. Los botones quedan a la derecha. */
+  .filters {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .filters .input {
+    flex: 1;       /* ocupa todo el espacio disponible */
+    width: auto;
+    min-width: 0;  /* permite que se comprima si hace falta */
+  }
+
+  /* ── 5. TABLA → TARJETAS ──
+     Este es el truco principal: convertimos cada <tr> de la tabla
+     en una "tarjeta" apilada en columna, para no tener scroll horizontal.
+
+     La técnica:
+       - table, thead, tbody, tr → display: block (dejan de ser tabla)
+       - thead → display: none  (ocultamos los encabezados de columna)
+       - td → display: flex con dos columnas: label a la izquierda, valor a la derecha
+       - td::before usa el atributo data-label del HTML para mostrar el nombre del campo
+  */
+  .table,
+  .table tbody,
+  .table tr {
+    display: block;
+    width: 100%;
+  }
+
+  /* Ocultamos el encabezado porque cada celda ya mostrará su propio label */
+  .table thead { display: none; }
+
+  /* Cada fila de la tabla se convierte en una tarjeta con borde y sombra */
+  .table tr {
+    border: 1px solid var(--border);
+    border-radius: var(--r2);
+    margin-bottom: 10px;
+    padding: 6px 0;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,.04);
+  }
+
+  /* Cada celda se muestra como fila: "Campo:  Valor" */
+  .table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    gap: 8px;
+  }
+  .table td:last-child { border-bottom: none; }
+
+  /* El pseudo-elemento ::before lee el atributo data-label del <td>
+     y lo muestra como etiqueta gris a la izquierda.
+     NOTA: Para que esto funcione, el JS debe agregar data-label a cada <td>.
+     Lo hacemos en el paso 3 (modificación de app.js — función table()). */
+  .table td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    flex-shrink: 0;
+    min-width: 80px;
+  }
+
+  /* Las acciones (Editar / Eliminar) van abajo centradas */
+  .table td:last-child {
+    justify-content: flex-end;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .table td:last-child::before { display: none; } /* no mostramos label en la fila de botones */
+
+  /* ── 6. MODAL en móvil: pantalla completa desde abajo (sheet) ──
+     En escritorio el modal aparece centrado. En móvil, como una
+     "bottom sheet" que sube desde abajo, más natural en teléfonos. */
+  .modal {
+    align-items: flex-end;  /* empuja la tarjeta hacia abajo */
+    padding: 0;
+  }
+  .modal-card {
+    width: 100%;
+    max-height: 92vh;       /* deja un poco de espacio arriba para ver que hay fondo */
+    border-radius: 20px 20px 0 0; /* solo esquinas superiores redondeadas */
+  }
+
+  /* ── 7. TOAST: sube más arriba de la barra inferior ──
+     En escritorio el toast aparece a 18px del fondo.
+     En móvil lo subimos para que no quede detrás de la barra inferior. */
+  .toast {
+    bottom: 80px; /* 70px de barra + 10px de margen */
+    right: 14px;
+    left: 14px;
+    text-align: center;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BARRA DE NAVEGACIÓN INFERIOR (bottom nav)
+   Se muestra solo en móvil (≤ 640px).
+   En escritorio display:none (ver regla @media ≥ 901px arriba).
+════════════════════════════════════════════════════════ */
+.bottom-nav {
+  /*
+    position: fixed → se queda fija aunque el usuario haga scroll
+    bottom: 0       → pegada al fondo de la pantalla
+    inset-x: 0      → de borde a borde
+    z-index: 50     → encima del contenido pero debajo del modal (z-index: 100)
+  */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+
+  display: flex;
+  justify-content: space-around;
+  align-items: stretch;
+
+  background: #fff;
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 16px rgba(0,0,0,.07);
+
+  /*
+    padding-bottom: env(safe-area-inset-bottom)
+    → en iPhones con "notch" o barra de gestos, agrega espacio
+      extra abajo para que los botones no queden detrás de la barra del sistema.
+      En teléfonos Android normales este valor es 0, así que no afecta.
+  */
+  padding-bottom: env(safe-area-inset-bottom);
+
+  /* Solo se ve en móvil */
+  display: none;
+}
+
+/* En móvil la mostramos */
+@media (max-width: 640px) {
+  .bottom-nav { display: flex; }
+}
+
+/* Cada pestaña de la barra inferior */
+.bottom-tab {
+  flex: 1;              /* todas las pestañas del mismo ancho */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 4px;
+
+  /* Reseteamos los estilos del .chip base que no queremos aquí */
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: background .15s;
+}
+.bottom-tab:active {
+  background: var(--primary-soft); /* feedback visual al tocar */
+}
+
+.tab-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.tab-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: .01em;
+}
+
+/* Pestaña activa: ícono y texto en color primario */
+.bottom-tab.active .tab-label {
+  color: var(--primary);
+}
+/* El ícono activo también se marca con un fondo suave */
+.bottom-tab.active {
+  background: var(--primary-soft);
 }
 /* ── SCANNER DE CÁMARA ── */
 .scanner-wrap {
@@ -300,4 +535,104 @@ body{
   font-family: monospace;
   font-size: 14px;
   color: var(--primary);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PANTALLA DE LOGIN
+   Cubre toda la pantalla encima de la app.
+   Cuando el usuario inicia sesión se oculta con display:none
+   y se muestra el contenido real (#appShell).
+════════════════════════════════════════════════════════ */
+#loginScreen {
+  position: fixed;
+  inset: 0;             /* top:0 right:0 bottom:0 left:0 — shorthand moderno */
+  z-index: 999;         /* encima de todo: modal(100), bottom-nav(50), etc. */
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.10);
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.login-logo {
+  text-align: center;
+  font-size: 40px;
+  line-height: 1;
+}
+
+.login-title {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.login-subtitle {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  margin: -12px 0 0;
+}
+
+.login-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-fields .input {
+  width: 100%;
+  max-width: 100%;
+  font-size: 15px;
+  padding: 12px 14px;
+}
+
+#loginBtn {
+  width: 100%;
+  padding: 13px;
+  font-size: 15px;
+  font-weight: 800;
+  border-radius: 14px;
+}
+
+#loginError {
+  font-size: 13px;
+  color: var(--danger);
+  text-align: center;
+  min-height: 18px;
+}
+
+/* ─── Chip de usuario en el topbar ───────────────────────────────────────────
+    Muestra "usuario-rango" en el topbar cuando hay sesión activa.
+   Al hacer clic cierra la sesión. */
+#userChip {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+#userChip:hover {
+  background: var(--danger-soft);
+  border-color: rgba(225,29,72,.35);
+  color: #9f1239;
 }

@@ -1,20 +1,23 @@
 const mysql = require("mysql2/promise");
 
-let connection;
+let pool;
 
 async function openDb() {
-  if (!connection) {
-    connection = await mysql.createConnection({
+  if (!pool) {
+    pool = mysql.createPool({
       host: process.env.DB_HOST,
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME
+      database: process.env.DB_NAME,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0
     });
 
-    console.log("✅ Conectado a MySQL");
+    console.log("✅ Pool de conexiones MySQL listo");
   }
 
-  return connection;
+  return pool;
 }
 
 module.exports = { openDb };

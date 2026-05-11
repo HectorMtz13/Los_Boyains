@@ -2,28 +2,109 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!--
+    viewport: width=device-width  → que use el ancho real del teléfono (no simule desktop)
+    initial-scale=1               → sin zoom inicial
+    viewport-fit=cover            → respeta el "notch" y la barra de inicio del iPhone
+  -->
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Tienda de Abarrotes — Sistema</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <body>
+
+  <!-- ═══════════════════════════════════════════════════════
+       PANTALLA DE LOGIN
+       Tiene z-index:999 en CSS, así que tapa todo lo demás.
+       El JS la oculta (display:none) cuando la sesión es válida
+       y la muestra cuando el usuario cierra sesión.
+  ════════════════════════════════════════════════════════ -->
+  <div id="loginScreen">
+    <div class="login-card">
+      <div class="login-logo">🛒</div>
+      <h1 class="login-title">Tienda de Abarrotes</h1>
+      <p class="login-subtitle">Inicia sesión para continuar</p>
+
+      <div class="login-fields">
+        <!--
+          No usamos <form> para evitar que el navegador recargue la página.
+          Capturamos el Enter con keydown en el input de contraseña (ver app.js).
+        -->
+        <div class="field">
+          <div class="label">Usuario</div>
+          <input id="loginUser" class="input" type="text"
+                 placeholder="ej. admin" autocomplete="username" />
+        </div>
+        <div class="field">
+          <div class="label">Contraseña</div>
+          <input id="loginPass" class="input" type="password"
+                 placeholder="••••••••" autocomplete="current-password" />
+        </div>
+      </div>
+
+      <button id="loginBtn" class="btn primary">Entrar →</button>
+<div id="loginError"></div>
+
+<button id="showSetupBtn" style="background:none;border:none;color:#888;font-size:13px;margin-top:8px;cursor:pointer;">
+  ¿Problemas para entrar? Crear / resetear usuario
+</button>
+
+<div id="setupPanel" style="display:none;margin-top:16px;width:100%;border-top:1px solid #eee;padding-top:16px;">
+  <div class="field">
+    <div class="label">Clave de administrador</div>
+    <input id="setupClave" class="input" type="password" placeholder="Clave secreta" />
+  </div>
+  <div class="field">
+    <div class="label">Nuevo usuario</div>
+    <input id="setupUser" class="input" type="text" placeholder="ej. admin" />
+  </div>
+  <div class="field">
+    <div class="label">Nueva contraseña</div>
+    <input id="setupPass" class="input" type="password" placeholder="••••••••" />
+  </div>
+  <button id="setupBtn" class="btn primary" style="width:100%;margin-top:8px;">Crear / Resetear usuario</button>
+  <div id="setupMsg" style="margin-top:8px;font-size:13px;text-align:center;"></div>
+</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SHELL DE LA APP (todo lo que ve el usuario logueado)
+       Empieza oculto; el JS lo muestra cuando hay sesión válida.
+  ════════════════════════════════════════════════════════ -->
+  <div id="appShell" style="display:none">
+
+  <!-- TOPBAR  —  visible SOLO en escritorio (≥ 641px) -->
   <header class="topbar">
     <div class="brand">
       <div class="brand-title">🛒 Tienda de Abarrotes</div>
-      <div class="brand-subtitle">Productos · Clientes · Proveedores · Empleados · Ventas · Códigos de Barras</div>
+      <div class="brand-subtitle">Sistema POS · Inventario · Ventas</div>
     </div>
+
     <nav class="top-actions">
-      <button class="chip" data-view="productos">Productos</button>
-      <button class="chip" data-view="clientes">Clientes</button>
-      <button class="chip" data-view="proveedores">Proveedores</button>
-      <button class="chip" data-view="empleados">Empleados</button>
-      <button class="chip" data-view="areas">Áreas</button>
-      <button class="chip" data-view="ventas">Ventas</button>
-      <button class="chip" data-view="codigos">Códigos de Barras 📷</button>
+      <button class="chip" data-view="productos">📦 Productos</button>
+      <button class="chip" data-view="clientes">👥 Clientes</button>
+      <button class="chip" data-view="proveedores">🚚 Proveedores</button>
+      <button class="chip" data-view="empleados">👤 Empleados</button>
+      <button class="chip" data-view="areas">🏪 Áreas</button>
+      <button class="chip" data-view="ventas">🧾 Ventas</button>
+      <button class="chip" data-view="codigos">📷 Códigos</button>
     </nav>
+
+    <!--
+      Chip de usuario: aparece cuando hay sesión activa.
+      Muestra nombre y rol. Al hacer clic cierra sesión.
+      El JS lo activa con: document.getElementById('userChip').style.display = 'flex'
+    -->
+    <button id="userChip" title="Cerrar sesión"></button>
   </header>
 
+  <!-- ═══════════════════════════════════════════════════════
+       CONTENIDO PRINCIPAL
+       El padding-bottom en móvil se añade desde CSS para que
+       la barra inferior no tape el último elemento de la tabla
+  ════════════════════════════════════════════════════════ -->
   <main class="layout">
     <section class="card">
       <div class="card-head">
@@ -33,7 +114,7 @@
         </div>
         <div class="filters">
           <input id="search" class="input" placeholder="Buscar..." />
-          <button id="refresh" class="btn">↺ Actualizar</button>
+          <button id="refresh" class="btn">↺</button>
           <button id="newBtn" class="btn primary">+ Nuevo</button>
         </div>
       </div>
@@ -41,6 +122,39 @@
     </section>
   </main>
 
+  <!-- ═══════════════════════════════════════════════════════
+       BARRA DE NAVEGACIÓN INFERIOR  —  visible SOLO en móvil (≤ 640px)
+       Usa los mismos data-view y la clase .chip que ya reconoce app.js.
+       Al estar al fondo de la pantalla, el pulgar llega sin esfuerzo
+       (principio de diseño "thumb-friendly").
+
+       Solo mostramos 5 secciones principales; Áreas y Proveedores
+       son administración, se acceden mejor desde escritorio.
+  ════════════════════════════════════════════════════════ -->
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="bottom-tab chip" data-view="productos">
+      <span class="tab-icon">📦</span>
+      <span class="tab-label">Productos</span>
+    </button>
+    <button class="bottom-tab chip" data-view="clientes">
+      <span class="tab-icon">👥</span>
+      <span class="tab-label">Clientes</span>
+    </button>
+    <button class="bottom-tab chip" data-view="ventas">
+      <span class="tab-icon">🧾</span>
+      <span class="tab-label">Ventas</span>
+    </button>
+    <button class="bottom-tab chip" data-view="empleados">
+      <span class="tab-icon">👤</span>
+      <span class="tab-label">Empleados</span>
+    </button>
+    <button class="bottom-tab chip" data-view="codigos">
+      <span class="tab-icon">📷</span>
+      <span class="tab-label">Códigos</span>
+    </button>
+  </nav>
+
+  <!-- MODAL (sin cambios) -->
   <div id="modal" class="modal" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-head">
@@ -57,7 +171,8 @@
 
   <div id="toast" class="toast"></div>
 
-  <!-- Biblioteca ZXing para leer códigos de barras desde la cámara -->
+  </div><!-- /#appShell -->
+
   <script src="./zxing.min.js"></script>
   <script src="./app.js"></script>
 </body>

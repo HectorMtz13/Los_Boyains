@@ -1,0 +1,66 @@
+soy hector, alumno de la UAZ
+Materia Lab. Base de datos
+Bitacora de trabajo
+
+Bitácora de desarrollo — Sistema POS Tienda de Abarrotes
+Del PBI-001 al PBI-010
+
+PBI-001 — Arquitectura cliente-servidor
+Se definió una arquitectura de tres capas:
+frontend estático (HTML + CSS + JS vanilla), API REST en Node.js con Express, y base de datos MySQL.
+El escaneo de códigos corre completamente en el navegador usando BarcodeDetector nativo y ZXing como fallback, sin necesidad de app nativa.
+El servidor corre con HTTPS mediante certificados autogenerados para que la cámara funcione en móvil. Se separaron responsabilidades en carpetas:
+public/ para el cliente, backend/src/modules/ para la lógica de negocio por módulo, y backend/src/api.js como router legacy para los CRUDs simples.
+
+PBI-002 — Navegación y layout TRUE RESPONSIVE
+Se implementó un shell visual con dos modos:
+en escritorio aparece un topbar con botones de navegación horizontal, y en móvil aparece una barra inferior fija con íconos y etiquetas accesible con el pulgar.
+Las tablas en móvil se convierten en tarjetas usando el atributo data-label en cada <td> y el CSS td::before { content: attr(data-label) }.
+El viewport está configurado con width=device-width, initial-scale=1, viewport-fit=cover para respetar el notch del iPhone.
+
+PBI-003 — Autenticación de usuarios
+Se creó la tabla Usuario ligada a Empleado, con campos username, password_hash (SHA-256), rol (gerente/cajero/almacenista) y activo.
+El login hace POST a /api/auth/login y guarda la sesión en sessionStorage para que se borre al cerrar el navegador.
+Cada petición a la API incluye el header x-usuario-id para identificar quién opera.
+Se agregó un panel de setup en la pantalla de login para crear o resetear el usuario administrador con una clave secreta, sin necesidad de acceder directamente a la base de datos.
+
+PBI-004 — Normalizar esquema operativo
+Se extendió la base de datos con las siguientes tablas sin romper las existentes:
+Configuracion_Tienda (clave-valor para nombre, RFC, dirección, moneda), Caja (cajas físicas del negocio), Corte_Caja (apertura y cierre de turno por cajero), Pago_Venta (forma de pago por venta: efectivo, tarjeta, transferencia), y Auditoria (bitácora de operaciones importantes de solo inserción).
+Se insertaron valores iniciales de configuración con INSERT IGNORE para que sean seguros de re-ejecutar.
+
+PBI-005 — Activar cámara del celular
+Se implementó el módulo de escaneo en el navegador con dos estrategias según el dispositivo: primero intenta BarcodeDetector nativo (disponible en Chrome Android), y si no está disponible usa la librería ZXing como fallback (funciona en iOS Safari y Firefox).
+La cámara solicita preferentemente la cámara trasera con facingMode: { ideal: "environment" }.
+Hay un loop automático de detección cada 600-700ms y un botón de captura manual como respaldo.
+Al cerrar el modal se detiene el stream de la cámara para liberar el recurso.
+
+PBI-006 — Buscar producto por código escaneado
+Se agregó el método getByCodigoBarras en productos.model.js que hace un JOIN entre Producto y Codigo_Barras filtrando por activo = 1. Se creó el endpoint GET /api/productos/barcode/:codigo en el controlador y las rutas.
+La ruta /barcode/:codigo se colocó antes de /:id en el router para evitar que Express intercepte la palabra "barcode" como si fuera un ID numérico.
+
+PBI-007 — Registrar producto nuevo desde código no encontrado
+Se creó el método createConCodigo en el modelo que usa una transacción:
+primero inserta el producto en Producto y luego inserta el código en Codigo_Barras.
+Si cualquiera de los dos pasos falla hace rollback completo para no dejar datos huérfanos.
+El endpoint es POST /api/productos/con-codigo.
+También se colocó esta ruta antes de /:id en el router por la misma razón que el PBI-006.
+
+PBI-008 — Captura manual y validación de código de barras
+Se agregaron validaciones en dos capas.
+En el frontend, antes de enviar al servidor se verifica que el código no esté vacío, que tenga entre 3 y 50 caracteres, y que solo contenga letras, números, guiones y guiones bajos (regex /^[a-zA-Z0-9\-_]+$/).
+En el backend, en la ruta POST /api/codigos de api.js, se agregaron las mismas validaciones más una consulta previa a la base de datos para verificar si el código ya existe antes de intentar insertarlo, devolviendo un mensaje claro en lugar de un error genérico de MySQL.
+
+PBI-009 — Consultar catálogo de productos
+Se actualizó getAll en el modelo para aceptar dos parámetros
+q (texto de búsqueda por nombre o categoría) y soloActivos (booleano).
+Cuando el buscador está vacío solo muestra productos activos;
+cuando el usuario escribe algo busca en todos para permitir encontrar y reactivar productos inactivos.
+Se hace un LEFT JOIN con Codigo_Barras para mostrar el código en el listado.
+En el frontend se agregó una alerta visual amarilla cuando hay productos con stock igual o menor al stock mínimo configurado, y el número de stock se pinta en rojo en esos casos.
+
+PBI-010 — Crear y editar productos
+Se actualizaron create y update en el modelo para manejar los campos nuevos: precio_compra, stock_minimo, unidad_medida y activo.
+El UPDATE ahora incluye fecha_modificacion = NOW() para registrar cuándo fue la última edición.
+Las validaciones de precios no negativos y stock no negativo viven tanto en el modelo (servidor) como en los formularios del frontend (navegador).
+Los formularios de alta y edición ahora muestran todos los campos relevantes del producto.

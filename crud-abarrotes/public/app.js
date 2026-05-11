@@ -1,26 +1,163 @@
-// ========================= UTILIDADES GENERALES =========================
-const $ = (s) => document.querySelector(s);
+// ========================= AUTENTICACIÓN =========================
+//
+// ¿Cómo funciona el flujo de sesión?
+//
+//  1. Al cargar la página, miramos sessionStorage para ver si hay un
+//     usuario guardado de una visita anterior en esta pestaña.
+//  2. Si hay datos, llamamos a /api/auth/me para verificar que el
+//     usuario todavía exista y esté activo en la BD.
+//  3. Si todo está bien → mostramos la app. Si no → mostramos el login.
+//  4. Al hacer login, guardamos { id_usuario, username, rol, nombre_empleado }
+//     en sessionStorage (se borra automáticamente al cerrar el navegador).
+//  5. Cada petición a la API incluye el header "x-usuario-id" para que
+//     el backend sepa quién está operando (ver requireAuth en api.js).
+//
+// ¿Por qué sessionStorage y no localStorage?
+//   sessionStorage se borra al cerrar la pestaña, lo que es más seguro
+//   en una tienda donde varias personas comparten el mismo dispositivo.
 
-const state = { view: "productos", q: "" };
+// Objeto que guarda los datos del usuario activo. Null = no logueado.
+let sesionActiva = null;
 
+// Todas las llamadas a la API pasan por aquí — inyectamos el header de sesión
 const api = {
   async get(path) {
-    const r = await fetch(path);
+    const headers = {};
+    // Si hay sesión, mandamos el id del usuario en cada petición
+    if (sesionActiva) headers["x-usuario-id"] = sesionActiva.id_usuario;
+    const r = await fetch(path, { headers });
     const j = await r.json().catch(() => ({}));
+    if (r.status === 401) { cerrarSesion(); throw new Error("Sesión expirada"); }
     if (!r.ok) throw new Error(j.error || j.message || "Error del servidor");
     return j;
   },
   async send(path, method, body) {
+    const headers = { "Content-Type": "application/json" };
+    if (sesionActiva) headers["x-usuario-id"] = sesionActiva.id_usuario;
     const r = await fetch(path, {
       method,
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body || {})
     });
     const j = await r.json().catch(() => ({}));
+    if (r.status === 401) { cerrarSesion(); throw new Error("Sesión expirada"); }
     if (!r.ok) throw new Error(j.error || j.message || "Error del servidor");
     return j;
   }
 };
+
+// Muestra la app y oculta la pantalla de login
+function mostrarApp(usuario) {
+  sesionActiva = usuario;
+  // Guardamos en sessionStorage para sobrevivir un F5
+  sessionStorage.setItem("usuario", JSON.stringify(usuario));
+
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("appShell").style.display    = "block";
+
+  // Actualizamos el chip de usuario en el topbar
+  const chip = document.getElementById("userChip");
+  chip.style.display  = "flex";
+  // Mostramos nombre del empleado y su rol con mayúscula inicial
+  const rolTexto = usuario.rol.charAt(0).toUpperCase() + usuario.rol.slice(1);
+  chip.textContent = `👤 ${usuario.nombre_empleado} — ${rolTexto}`;
+
+  render(); // carga la vista inicial (productos)
+}
+
+// Cierra sesión: borra datos y vuelve al login
+function cerrarSesion() {
+  sesionActiva = null;
+  sessionStorage.removeItem("usuario");
+  document.getElementById("appShell").style.display    = "none";
+  document.getElementById("loginScreen").style.display = "flex";
+  document.getElementById("userChip").style.display    = "none";
+  // Limpiamos los inputs para la próxima persona que vaya a entrar
+  document.getElementById("loginUser").value = "";
+  document.getElementById("loginPass").value = "";
+  document.getElementById("loginError").textContent = "";
+}
+
+// Intenta hacer login con las credenciales del formulario
+async function intentarLogin() {
+  const username = document.getElementById("loginUser").value.trim();
+  const password = document.getElementById("loginPass").value;
+  const errorEl  = document.getElementById("loginError");
+  const btn      = document.getElementById("loginBtn");
+
+  errorEl.textContent = "";
+  if (!username || !password) {
+    errorEl.textContent = "Escribe tu usuario y contraseña.";
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = "Entrando...";
+
+  try {
+    // POST /api/auth/login — no necesita header de sesión porque aún no hay
+    const r = await fetch("/api/auth/login", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ username, password })
+    });
+    const data = await r.json().catch(() => ({}));
+
+    if (!r.ok) {
+      errorEl.textContent = data.error || "Credenciales incorrectas.";
+      return;
+    }
+
+    mostrarApp(data); // login exitoso
+
+  } catch (e) {
+    errorEl.textContent = "Error de conexión. ¿Está corriendo el servidor?";
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = "Entrar →";
+  }
+}
+
+// Eventos del formulario de login
+document.getElementById("loginBtn").addEventListener("click", intentarLogin);
+
+// Permitir presionar Enter en el campo de contraseña para entrar
+document.getElementById("loginPass").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") intentarLogin();
+});
+
+// El chip del topbar sirve para cerrar sesión
+document.getElementById("userChip").addEventListener("click", () => {
+  if (confirm("¿Cerrar sesión?")) cerrarSesion();
+});
+
+// Al cargar la página: revisamos si hay sesión guardada en sessionStorage
+(async function iniciarApp() {
+  const guardado = sessionStorage.getItem("usuario");
+
+  if (guardado) {
+    try {
+      const usuario = JSON.parse(guardado);
+      // Verificamos contra el servidor que el usuario siga activo
+      const r = await fetch("/api/auth/me", {
+        headers: { "x-usuario-id": usuario.id_usuario }
+      });
+      if (r.ok) {
+        const data = await r.json();
+        mostrarApp(data); // sesión válida → entramos directo
+        return;
+      }
+    } catch (e) { /* si falla la red, caemos al login */ }
+  }
+
+  // No hay sesión válida → mostramos el login
+  document.getElementById("loginScreen").style.display = "flex";
+})();
+
+// ========================= UTILIDADES GENERALES =========================
+const $ = (s) => document.querySelector(s);
+
+const state = { view: "productos", q: "" };
 
 function toast(msg, isError = false) {
   const t = $("#toast");
@@ -44,8 +181,32 @@ function h(tag, attrs = {}, children = []) {
 
 function table(headers, rows) {
   if (!rows.length) return h("div", { class: "empty" }, ["Sin registros."]);
+
   const thead = h("thead", {}, [h("tr", {}, headers.map((x) => h("th", {}, [x])))]);
-  const tbody = h("tbody", {}, rows.map((r) => h("tr", {}, r.map((c) => h("td", {}, [c])))));
+
+  /*
+    Para cada celda <td> agregamos el atributo data-label con el nombre
+    de su columna (tomado de headers[índice]).
+    El CSS usa td::before { content: attr(data-label) } para mostrarlo
+    como etiqueta en la vista de tarjeta en móvil.
+    En escritorio el ::before no se ve porque la tabla muestra los <th>.
+  */
+  const tbody = h("tbody", {}, rows.map((r) =>
+    h("tr", {}, r.map((c, i) => {
+      const label = headers[i] || "";
+      // Si la celda ya es un elemento HTML (como los botones de Acciones),
+      // lo insertamos directo. Si es texto, lo convertimos a nodo de texto.
+      const td = document.createElement("td");
+      td.setAttribute("data-label", label); // ← esto es lo nuevo
+      if (typeof c === "string") {
+        td.textContent = c;
+      } else {
+        td.appendChild(c);
+      }
+      return td;
+    }))
+  ));
+
   return h("table", { class: "table" }, [thead, tbody]);
 }
 
@@ -174,60 +335,148 @@ async function render() {
 
 // ========================= PRODUCTOS =========================
 async function renderProductos() {
-  const { data } = await api.get(`/api/productos?q=${encodeURIComponent(state.q)}`);
-  const rows = data.map((x) => [
-    String(x.id),
-    x.Nombre_producto || "—",
-    String(x.Cantidad_producto ?? "—"),
-    x.Precio_Producto != null ? `$${parseFloat(x.Precio_Producto).toFixed(2)}` : "—",
-    x.Categoria_Producto || "—",
-    h("div", { class: "actions" }, [
-      h("button", { class: "btn", onClick: () => editProducto(x) }, ["Editar"]),
-      h("button", { class: "btn danger", onClick: () => delProducto(x.id) }, ["Eliminar"])
-    ])
-  ]);
-  $("#content").innerHTML = "";
-  $("#content").appendChild(table(["ID", "Nombre", "Cantidad", "Precio", "Categoría", "Acciones"], rows));
+  const mostrarTodos = state.q === "" ? "0" : "1";
+  const { data } = await api.get(
+    `/api/productos?q=${encodeURIComponent(state.q)}&todos=${mostrarTodos}`
+  );
+
+  // Alerta si hay productos con stock bajo
+  const stockBajo = data.filter(x => x.Cantidad_producto <= (x.stock_minimo || 5));
+  if (stockBajo.length) {
+    const alerta = h("div", {
+      style: "background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.9rem;"
+    }, [`⚠️ ${stockBajo.length} producto(s) con stock bajo: ${stockBajo.map(p => p.Nombre_producto).join(", ")}`]);
+    $("#content").innerHTML = "";
+    $("#content").appendChild(alerta);
+  } else {
+    $("#content").innerHTML = "";
+  }
+
+  const rows = data.map((x) => {
+    const activo    = x.activo !== 0;
+    const stockAlerta = activo && x.Cantidad_producto <= (x.stock_minimo || 5);
+
+    return [
+      String(x.id),
+      x.Nombre_producto || "—",
+      x.codigo_barras   || "—",
+      // Stock con color si está bajo
+      (() => {
+        const el = h("span", {
+          style: stockAlerta
+            ? "color:#dc2626;font-weight:700;"
+            : ""
+        }, [String(x.Cantidad_producto ?? "—")]);
+        if (stockAlerta) el.title = "Stock bajo";
+        return el;
+      })(),
+      String(x.stock_minimo ?? "—"),
+      x.Precio_Producto != null ? `$${parseFloat(x.Precio_Producto).toFixed(2)}` : "—",
+      x.unidad_medida   || "pieza",
+      x.Categoria_Producto || "—",
+      // Badge de estado
+      h("span", {
+        style: `display:inline-block;padding:2px 8px;border-radius:20px;font-size:.75rem;font-weight:600;
+                background:${activo ? "#d1fae5" : "#fee2e2"};
+                color:${activo ? "#065f46" : "#991b1b"};`
+      }, [activo ? "Activo" : "Inactivo"]),
+      // Acciones
+      h("div", { class: "actions" }, [
+        h("button", { class: "btn", onClick: () => editProducto(x) }, ["Editar"]),
+        h("button", {
+          class: activo ? "btn" : "btn primary",
+          onClick: () => toggleActivo(x)
+        }, [activo ? "Inactivar" : "Activar"]),
+        h("button", { class: "btn danger", onClick: () => delProducto(x.id) }, ["Eliminar"]),
+      ])
+    ];
+  });
+
+  const tbl = table(
+    ["ID", "Nombre", "Código", "Stock", "Mín.", "Precio", "Unidad", "Categoría", "Estado", "Acciones"],
+    rows
+  );
+  $("#content").appendChild(tbl);
 }
 
 async function newProducto() {
   const form = h("div", { class: "form" }, [
-    field("Nombre del producto", "Nombre_producto", "", false),
-    numField("Cantidad", "Cantidad_producto", "0", false),
-    numField("Precio ($)", "Precio_Producto", "0.00", false),
-    field("Categoría", "Categoria_Producto", "", false)
+    field("Nombre del producto *",  "Nombre_producto",   ""),
+    numField("Cantidad inicial",    "Cantidad_producto", "0"),
+    numField("Precio venta ($) *",  "Precio_Producto",   "0.00"),
+    numField("Precio compra ($)",   "precio_compra",     "0.00"),
+    numField("Stock mínimo",        "stock_minimo",      "5"),
+    field("Unidad de medida",       "unidad_medida",     "pieza"),
+    field("Categoría",              "Categoria_Producto",""),
   ]);
+
   const save = async () => {
     try {
       const p = readForm(form);
-      if (!p.Nombre_producto) return toast("El nombre es obligatorio", true);
+
+      // Validaciones frontend
+      if (!p.Nombre_producto)
+        return toast("El nombre es obligatorio", true);
+      if (parseFloat(p.Precio_Producto) < 0)
+        return toast("El precio de venta no puede ser negativo", true);
+      if (parseFloat(p.precio_compra) < 0)
+        return toast("El precio de compra no puede ser negativo", true);
+      if (parseInt(p.Cantidad_producto) < 0)
+        return toast("El stock no puede ser negativo", true);
+
       await api.send("/api/productos", "POST", p);
-      toast("Producto creado ✓"); closeModal(); render();
-    } catch (e) { toast("Error: " + e.message, true); }
+      toast("Producto creado ✓");
+      closeModal();
+      render();
+    } catch (e) {
+      toast("Error: " + e.message, true);
+    }
   };
+
   openModal("Nuevo producto", "Inventario", form, [
-    h("button", { class: "btn", onClick: closeModal }, ["Cancelar"]),
-    h("button", { class: "btn primary", onClick: save }, ["Crear"])
+    h("button", { class: "btn",     onClick: closeModal }, ["Cancelar"]),
+    h("button", { class: "btn primary", onClick: save  }, ["Crear"]),
   ]);
 }
 
 async function editProducto(x) {
   const form = h("div", { class: "form" }, [
-    field("Nombre del producto", "Nombre_producto", x.Nombre_producto, false),
-    numField("Cantidad", "Cantidad_producto", x.Cantidad_producto ?? 0, false),
-    numField("Precio ($)", "Precio_Producto", x.Precio_Producto ?? 0, false),
-    field("Categoría", "Categoria_Producto", x.Categoria_Producto || "", false)
+    field("Nombre del producto *",  "Nombre_producto",    x.Nombre_producto),
+    numField("Cantidad",            "Cantidad_producto",  x.Cantidad_producto ?? 0),
+    numField("Precio venta ($)",    "Precio_Producto",    x.Precio_Producto   ?? 0),
+    numField("Precio compra ($)",   "precio_compra",      x.precio_compra     ?? 0),
+    numField("Stock mínimo",        "stock_minimo",       x.stock_minimo      ?? 5),
+    field("Unidad de medida",       "unidad_medida",      x.unidad_medida  || "pieza"),
+    field("Categoría",              "Categoria_Producto", x.Categoria_Producto || ""),
   ]);
+
   const save = async () => {
     try {
       const p = readForm(form);
+
+      // Validaciones frontend
+      if (!p.Nombre_producto)
+        return toast("El nombre es obligatorio", true);
+      if (parseFloat(p.Precio_Producto) < 0)
+        return toast("El precio de venta no puede ser negativo", true);
+      if (parseFloat(p.precio_compra) < 0)
+        return toast("El precio de compra no puede ser negativo", true);
+      if (parseInt(p.Cantidad_producto) < 0)
+        return toast("El stock no puede ser negativo", true);
+
+      p.activo = x.activo; // conservar estado activo al editar
       await api.send(`/api/productos/${x.id}`, "PUT", p);
-      toast("Producto actualizado ✓"); closeModal(); render();
-    } catch (e) { toast("Error: " + e.message, true); }
+      toast("Producto actualizado ✓");
+      closeModal();
+      render();
+    } catch (e) {
+      toast("Error: " + e.message, true);
+    }
   };
+
   openModal("Editar producto", `ID ${x.id}`, form, [
-    h("button", { class: "btn", onClick: closeModal }, ["Cancelar"]),
-    h("button", { class: "btn primary", onClick: save }, ["Guardar"])
+    h("button", { class: "btn",         onClick: closeModal }, ["Cancelar"]),
+    h("button", { class: "btn primary", onClick: save      }, ["Guardar"]),
   ]);
 }
 
@@ -755,16 +1004,32 @@ async function newCodigo() {
 
   // ---- Guardar ----
   const save = async () => {
-    try {
-      const p = readForm(form);
-      p.codigo_barras = codigoInput.value.trim();
-      if (!p.id_producto)   return toast("Selecciona un producto", true);
-      if (!p.codigo_barras) return toast("El código de barras es obligatorio", true);
-      await api.send("/api/codigos", "POST", p);
-      toast("Código registrado ✓"); closeModal(); render();
-    } catch (e) { toast("Error: " + e.message, true); }
-  };
+  try {
+    const p = readForm(form);
+    const codigo = codigoInput.value.trim();
 
+    // Validaciones en frontend (PBI-008)
+    if (!p.id_producto)
+      return toast("Selecciona un producto", true);
+
+    if (!codigo)
+      return toast("El código de barras es obligatorio", true);
+
+    if (codigo.length < 3 || codigo.length > 50)
+      return toast("El código debe tener entre 3 y 50 caracteres", true);
+
+    if (!/^[a-zA-Z0-9\-_]+$/.test(codigo))
+      return toast("Solo letras, números, guiones y guiones bajos", true);
+
+    p.codigo_barras = codigo;
+    await api.send("/api/codigos", "POST", p);
+    toast("Código registrado ✓");
+    closeModal();
+    render();
+  } catch (e) {
+    toast("Error: " + e.message, true);
+  }
+};
   openModal("Nuevo código de barras", "Escáner + registro", form, [
     h("button", { class: "btn", onClick: closeModal }, ["Cancelar"]),
     h("button", { class: "btn primary", onClick: save }, ["Guardar"])
@@ -807,5 +1072,39 @@ function onNew() {
   if (state.view === "ventas")      return newVenta();
   if (state.view === "codigos")     return newCodigo();
 }
+// ========================= SETUP DE USUARIO =========================
+document.getElementById("showSetupBtn").addEventListener("click", () => {
+  const panel = document.getElementById("setupPanel");
+  panel.style.display = panel.style.display === "none" ? "block" : "none";
+});
 
+document.getElementById("setupBtn").addEventListener("click", async () => {
+  const clave_admin = document.getElementById("setupClave").value.trim();
+  const username    = document.getElementById("setupUser").value.trim();
+  const password    = document.getElementById("setupPass").value;
+  const msgEl       = document.getElementById("setupMsg");
+
+  msgEl.style.color = "#888";
+  msgEl.textContent = "Procesando...";
+
+  try {
+    const r = await fetch("/api/auth/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clave_admin, username, password, rol: "gerente" })
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      msgEl.style.color = "red";
+      msgEl.textContent = data.error || "Error";
+    } else {
+      msgEl.style.color = "green";
+      msgEl.textContent = data.mensaje + " — ya puedes iniciar sesión";
+      document.getElementById("loginUser").value = username;
+    }
+  } catch (e) {
+    msgEl.style.color = "red";
+    msgEl.textContent = "Error de conexión";
+  }
+});
 render();
