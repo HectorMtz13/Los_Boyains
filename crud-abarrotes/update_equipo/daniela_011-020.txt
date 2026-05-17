@@ -1,0 +1,241 @@
+Daniela — Equipo Los Boyains, UAzzzz
+Materia: Laboratorio de Base de Datos
+Bitácora de trabajo
+
+Bitácora de desarrollo — Sistema POS Tienda de Abarrotes
+Del PBI-011 al PBI-020
+
+=====================================================
+NOTA SOBRE LOS COMMITS EN EL REPOSITORIO
+=====================================================
+
+En el historial de GitHub únicamente aparecen commits con los nombres
+PBI-011, PBI-013 y PBI-015, lo qeu significa lo siguiente:
+
+Los archivos subidos al repositorio son versiones FINALES que ya incluyen
+todos los cambios acumulados:
+
+- El commit del PBI-011 contiene también los cambios del PBI-012,
+  ya que ambos modifican el mismo archivo (backend/src/api.js).
+
+- El commit del PBI-013 contiene también los cambios del PBI-014,
+  ya que ambos modifican el mismo archivo (public/app.js).
+
+- El commit del PBI-015 contiene también los cambios del PBI-016,
+  PBI-017, PBI-018, PBI-019 y PBI-020, ya que todos modifican los
+  mismos archivos (pos.model.js, pos.controller.js, pos.routes.js,
+  auth.js, app.js y api.js).
+
+Ressumen: cada archivo subido es la versión final que engloba todos
+los PBI correspondientes. Los 10 puntos (PBI-011 al PBI-020) están
+completamente implementados en el código actual del repositorio.
+
+=====================================================
+
+PBI-011 — Administrar categorías y relación producto-categoría
+
+Qué se implementó:
+Se crearon los endpoints REST para gestión completa de categorías y su relación con productos,
+utilizando la tabla puente Producto_Categoria ya definida en el esquema.
+
+Archivos modificados:
+- backend/src/api.js
+
+Endpoints creados:
+- GET    /api/categorias                              — Lista categorías (solo activas por defecto; ?todas=1 muestra todas)
+- POST   /api/categorias                              — Crea categoría nueva, valida nombre único
+- PUT    /api/categorias/:id                          — Edita nombre, valida que no se duplique
+- PATCH  /api/categorias/:id/activo                   — Activa o inactiva sin borrar
+- POST   /api/productos/:id/categorias                — Asigna categoría a un producto
+- DELETE /api/productos/:id/categorias/:id_categoria  — Remueve categoría de un producto
+
+=====================================================
+
+PBI-012 — Inactivar producto sin borrar historial
+
+Qué se implementó:
+Se agregó el campo activo a la tabla Producto mediante ALTER TABLE, y se crearon endpoints
+para activar/inactivar productos. Las ventas históricas se conservan intactas.
+Se agregó validación en el flujo de venta para bloquear productos inactivos.
+
+Archivos modificados:
+- backend/src/api.js
+
+Cambio en base de datos:
+ALTER TABLE Producto
+ADD COLUMN activo TINYINT(1) NOT NULL DEFAULT 1;
+
+Endpoints creados/modificados:
+- PATCH /api/productos/:id/activo — Cambia estado activo/inactivo sin borrar
+- POST  /api/ventas               — Valida que el producto esté activo antes de vender
+
+=====================================================
+
+PBI-013 — Abrir venta rápida tipo POS
+
+Qué se implementó:
+Se creó la pantalla principal del POS en el frontend con escáner de cámara integrado,
+campo de búsqueda manual, carrito en tiempo real, campo de descuento, cálculo de total
+y botones de cobro y cancelación.
+
+Archivos modificados:
+- public/app.js — función renderPOS()
+
+Funcionalidades implementadas:
+- Campo de texto para buscar por nombre o código de barras
+- Botón de cámara que activa el escáner (BarcodeDetector API o ZXing como fallback)
+- Carrito con lista de productos agregados
+- Campo de descuento en pesos con recálculo automático
+- Total visible en tiempo real
+- Botón "Cobrar" y botón "Cancelar venta"
+
+=====================================================
+
+PBI-014 — Agregar productos al carrito por escaneo o búsqueda
+
+Qué se implementó:
+Se implementó la función agregarProducto() que maneja la lógica de agregar items al carrito,
+incrementar cantidad si el producto ya existe, validar stock disponible y bloquear productos inactivos.
+La búsqueda funciona por código de barras exacto primero, y luego por nombre con lista de sugerencias.
+
+Archivos modificados:
+- public/app.js
+- backend/src/modules/productos/
+
+Flujo de búsqueda:
+- Se intenta buscar por código de barras exacto (/api/productos/barcode/:codigo)
+- Si no encuentra, busca por nombre (/api/productos?q=)
+- Si hay un solo resultado, se agrega directo al carrito
+- Si hay varios, muestra lista de sugerencias para elegir
+
+=====================================================
+
+PBI-015 — Editar carrito: cantidades, eliminación y descuentos
+
+Qué se implementó:
+Se implementaron los controles de edición del carrito en frontend, la lógica de cálculo en backend
+(calcularCarrito), validación de stock antes de confirmar (validarStockCarrito), y la creación de
+la venta con transacción en base de datos (crearVenta).
+Se implementó la validación de rol para descuentos mayores al 10%.
+
+Archivos modificados:
+- public/app.js
+- backend/src/modules/pos/pos.model.js
+- backend/src/modules/pos/pos.controller.js
+- backend/src/modules/pos/pos.routes.js
+- backend/src/middleware/auth.js
+
+Funcionalidades implementadas:
+- Botones + y − por cada producto; al llegar a 0 el producto se elimina
+- Botón ✕ para eliminar línea completa del carrito
+- Campo de descuento en pesos con recálculo en tiempo real
+- Modal de confirmación con resumen del ticket
+- Campo de efectivo recibido y cálculo de cambio
+- calcularCarrito() recalcula subtotales y valida que el descuento no supere el subtotal
+- validarStockCarrito() verifica stock y estado activo de cada producto
+- crearVenta() inserta en Venta y Detalle_Venta dentro de una transacción con bloqueo FOR UPDATE
+
+=====================================================
+
+PBI-016 — Calcular subtotal, impuestos y total
+
+Qué se implementó:
+Se implementó el cálculo automático de importes dentro del módulo de ventas del POS.
+El frontend recalcula dinámicamente subtotal, impuestos, descuento y total cada vez que
+el cajero agrega, elimina o modifica productos en el carrito.
+
+Archivos modificados:
+- public/app.js
+- backend/src/modules/pos/pos.model.js
+
+Funcionalidades implementadas:
+- Subtotal: suma de cantidad × precio unitario por cada partida
+- Impuestos: tasa configurable aplicada sobre el subtotal
+- Total: subtotal + impuestos - descuento
+- Validación de importes no negativos en frontend y backend
+- Normalización con parseFloat y Math.max(0, valor) antes de guardar en base de datos
+- Redondeo a dos decimales con toFixed(2) para consistencia visual y contable
+- Columnas subtotal, impuestos, descuento y total persistidas en tabla Venta
+
+=====================================================
+
+PBI-017 — Cobrar venta con método de pago
+
+Qué se implementó:
+Se desarrolló el flujo completo de cierre de venta dentro del POS.
+El cajero puede seleccionar un método de pago válido antes de confirmar la operación.
+Toda la operación se ejecuta dentro de una transacción MySQL para garantizar integridad de datos.
+
+Archivos modificados:
+- backend/src/modules/pos/pos.model.js
+
+Funcionalidades implementadas:
+- Métodos de pago disponibles: EFECTIVO, TARJETA, TRANSFERENCIA
+- Transacción que incluye: INSERT Venta, INSERT Pago_Venta, INSERT Detalle_Venta,
+  SELECT FOR UPDATE para validar stock, UPDATE stock en Producto,
+  INSERT en Movimiento_Inventario
+- Rollback automático si cualquier paso falla
+- Validaciones: producto debe existir, cantidad mayor a cero, precio válido, stock suficiente
+- Ventas guardadas automáticamente con estado COMPLETADA
+
+=====================================================
+
+PBI-018 — Emitir ticket o comprobante de venta
+
+Qué se implementó:
+Se implementó un sistema de visualización e impresión de tickets desde el historial de ventas.
+El ticket se genera dinámicamente en HTML con los datos obtenidos desde GET /api/pos/:id.
+
+Archivos modificados:
+- public/app.js
+
+Funcionalidades implementadas:
+- Ticket muestra: folio, fecha, empleado, cliente, método de pago, estado,
+  productos, cantidades, precio unitario, subtotales y total
+- Botón "Ver ticket" disponible desde el historial de ventas
+- Impresión en ventana independiente con window.open() para no bloquear la interfaz
+- Estilos CSS optimizados para impresoras térmicas
+- Estrategia de impresión: crear ventana temporal → insertar HTML → setTimeout → window.print() → cerrar
+- Soporte para reimpresión desde historial
+
+=====================================================
+
+PBI-019 — Consultar historial de ventas
+
+Qué se implementó:
+Se desarrolló un módulo completo de historial de ventas accesible desde el menú principal.
+El listado se obtiene mediante GET /api/pos?q= con búsqueda dinámica desde el frontend.
+
+Archivos modificados:
+- public/app.js
+- backend/src/api.js
+
+Funcionalidades implementadas:
+- Historial muestra: ID de venta, fecha, empleado, cliente, método de pago, estado y total
+- Búsqueda dinámica por texto con actualización automática de la tabla
+- Acciones por fila: Ver ticket, Reimprimir, Cancelar venta
+- Consultas JOIN entre Venta, Empleado, Cliente y Detalle_Venta
+- Endpoint GET /api/pos/:id con detalle completo incluyendo arreglo items
+- Actualización automática del historial después de crear o cancelar ventas
+
+=====================================================
+
+PBI-020 — Cancelar venta y revertir inventario
+
+Qué se implementó:
+Se implementó el proceso de cancelación lógica de ventas manteniendo trazabilidad completa.
+La operación completa se ejecuta dentro de una transacción.
+
+Archivos modificados:
+- public/app.js
+- backend/src/api.js
+
+Funcionalidades implementadas:
+- Estado cambia a CANCELADA sin eliminar el registro original
+- Restauración de stock: UPDATE Producto SET stock = stock + cantidad por cada partida
+- Movimientos inversos de tipo ENTRADA en Movimiento_Inventario con referencia_tipo = "CANCELACION"
+- Campos agregados en Venta: motivo_cancelacion y fecha_cancelacion
+- Validaciones: solo ventas COMPLETADAS pueden cancelarse, no se puede cancelar dos veces,
+  motivo de cancelación obligatorio
+- Confirmación visual antes de cancelar desde el frontend
+- Estado CANCELADA visible en tickets históricos y listado principal
