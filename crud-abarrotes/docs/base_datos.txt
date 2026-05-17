@@ -1,0 +1,392 @@
+-- =====================================================
+-- ÁREAS
+-- =====================================================
+
+CREATE TABLE Area (
+    id_area INT AUTO_INCREMENT PRIMARY KEY,
+    nombre_area VARCHAR(50) NOT NULL UNIQUE,
+    descripcion TEXT
+);
+
+-- =====================================================
+-- EMPLEADOS
+-- =====================================================
+
+CREATE TABLE Empleado (
+    id_empleado INT AUTO_INCREMENT PRIMARY KEY,
+    nombre_empleado VARCHAR(80) NOT NULL,
+    puesto VARCHAR(50) NOT NULL,
+    id_area INT,
+    activo TINYINT(1) DEFAULT 1,
+
+    FOREIGN KEY (id_area)
+    REFERENCES Area(id_area)
+);
+
+-- =====================================================
+-- USUARIOS
+-- =====================================================
+
+CREATE TABLE Usuario (
+    id_usuario INT AUTO_INCREMENT PRIMARY KEY,
+
+    id_empleado INT NOT NULL UNIQUE,
+
+    username VARCHAR(60) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+
+    rol ENUM(
+        'gerente',
+        'cajero',
+        'almacenista'
+    ) NOT NULL DEFAULT 'cajero',
+
+    activo TINYINT(1) DEFAULT 1,
+
+    FOREIGN KEY (id_empleado)
+    REFERENCES Empleado(id_empleado)
+    ON DELETE CASCADE
+);
+
+-- =====================================================
+-- CLIENTES
+-- =====================================================
+
+CREATE TABLE Cliente (
+    id_cliente INT AUTO_INCREMENT PRIMARY KEY,
+    nombre_cliente VARCHAR(80) NOT NULL,
+    telefono VARCHAR(20),
+    email VARCHAR(100),
+    fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- PROVEEDORES
+-- =====================================================
+
+CREATE TABLE Proveedor (
+    id_proveedor INT AUTO_INCREMENT PRIMARY KEY,
+    nombre_proveedor VARCHAR(80) NOT NULL,
+    telefono VARCHAR(20),
+    email VARCHAR(100),
+    activo TINYINT(1) DEFAULT 1
+);
+
+-- =====================================================
+-- CATEGORÍAS
+-- =====================================================
+
+CREATE TABLE Categoria (
+    id_categoria INT AUTO_INCREMENT PRIMARY KEY,
+    nombre_categoria VARCHAR(50) NOT NULL UNIQUE,
+    activo TINYINT(1) DEFAULT 1
+);
+
+-- =====================================================
+-- PRODUCTOS
+-- =====================================================
+
+CREATE TABLE Producto (
+    id_producto INT AUTO_INCREMENT PRIMARY KEY,
+
+    nombre_producto VARCHAR(100) NOT NULL,
+
+    stock INT NOT NULL DEFAULT 0,
+
+    precio_compra DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+
+    precio_venta DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+
+    stock_minimo INT NOT NULL DEFAULT 5,
+
+    unidad_medida VARCHAR(30) DEFAULT 'pieza',
+
+    id_categoria INT,
+
+    activo TINYINT(1) DEFAULT 1,
+
+    fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    fecha_modificacion DATETIME
+    DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (id_categoria)
+    REFERENCES Categoria(id_categoria)
+);
+
+-- =====================================================
+-- CÓDIGOS DE BARRAS
+-- =====================================================
+
+CREATE TABLE Codigo_Barras (
+    id_codigo INT AUTO_INCREMENT PRIMARY KEY,
+
+    id_producto INT NOT NULL,
+
+    codigo_barras VARCHAR(100) NOT NULL UNIQUE,
+
+    fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (id_producto)
+    REFERENCES Producto(id_producto)
+    ON DELETE CASCADE
+);
+
+-- =====================================================
+-- COMPRAS
+-- =====================================================
+
+CREATE TABLE Compra (
+    id_compra INT AUTO_INCREMENT PRIMARY KEY,
+
+    id_proveedor INT NOT NULL,
+
+    id_empleado INT,
+
+    fecha_compra DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    subtotal DECIMAL(10,2) DEFAULT 0.00,
+
+    impuestos DECIMAL(10,2) DEFAULT 0.00,
+
+    total DECIMAL(10,2) DEFAULT 0.00,
+
+    FOREIGN KEY (id_proveedor)
+    REFERENCES Proveedor(id_proveedor),
+
+    FOREIGN KEY (id_empleado)
+    REFERENCES Empleado(id_empleado)
+);
+
+-- =====================================================
+-- DETALLE COMPRA
+-- =====================================================
+
+CREATE TABLE Detalle_Compra (
+    id_detalle_compra INT AUTO_INCREMENT PRIMARY KEY,
+
+    id_compra INT NOT NULL,
+
+    id_producto INT NOT NULL,
+
+    cantidad INT NOT NULL,
+
+    precio_unitario DECIMAL(10,2) NOT NULL,
+
+    subtotal DECIMAL(10,2) NOT NULL,
+
+    FOREIGN KEY (id_compra)
+    REFERENCES Compra(id_compra)
+    ON DELETE CASCADE,
+
+    FOREIGN KEY (id_producto)
+    REFERENCES Producto(id_producto)
+);
+
+-- =====================================================
+-- VENTAS
+-- =====================================================
+
+CREATE TABLE Venta (
+    id_venta INT AUTO_INCREMENT PRIMARY KEY,
+
+    id_cliente INT,
+
+    id_empleado INT,
+
+    fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    subtotal DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+
+    impuestos DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+
+    descuento DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+
+    total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+
+    metodo_pago ENUM(
+        'EFECTIVO',
+        'TARJETA',
+        'TRANSFERENCIA'
+    ),
+
+    estado ENUM(
+        'PENDIENTE',
+        'COMPLETADA',
+        'CANCELADA'
+    ) DEFAULT 'PENDIENTE',
+
+    motivo_cancelacion TEXT,
+
+    fecha_cancelacion DATETIME,
+
+    FOREIGN KEY (id_cliente)
+    REFERENCES Cliente(id_cliente),
+
+    FOREIGN KEY (id_empleado)
+    REFERENCES Empleado(id_empleado)
+);
+
+-- =====================================================
+-- DETALLE VENTA
+-- =====================================================
+
+CREATE TABLE Detalle_Venta (
+    id_detalle INT AUTO_INCREMENT PRIMARY KEY,
+
+    id_venta INT NOT NULL,
+
+    id_producto INT NOT NULL,
+
+    cantidad INT NOT NULL,
+
+    precio_unitario DECIMAL(10,2) NOT NULL,
+
+    subtotal DECIMAL(10,2) NOT NULL,
+
+    FOREIGN KEY (id_venta)
+    REFERENCES Venta(id_venta)
+    ON DELETE CASCADE,
+
+    FOREIGN KEY (id_producto)
+    REFERENCES Producto(id_producto)
+);
+
+-- =====================================================
+-- PAGOS DE VENTA
+-- =====================================================
+
+CREATE TABLE Pago_Venta (
+    id_pago INT AUTO_INCREMENT PRIMARY KEY,
+
+    id_venta INT NOT NULL,
+
+    forma_pago ENUM(
+        'EFECTIVO',
+        'TARJETA',
+        'TRANSFERENCIA'
+    ) NOT NULL,
+
+    monto DECIMAL(10,2) NOT NULL,
+
+    referencia VARCHAR(100),
+
+    fecha_pago DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (id_venta)
+    REFERENCES Venta(id_venta)
+    ON DELETE CASCADE
+);
+
+-- =====================================================
+-- MOVIMIENTOS INVENTARIO
+-- =====================================================
+
+CREATE TABLE Movimiento_Inventario (
+    id_movimiento INT AUTO_INCREMENT PRIMARY KEY,
+
+    id_producto INT NOT NULL,
+
+    tipo_movimiento ENUM(
+        'ENTRADA',
+        'SALIDA'
+    ) NOT NULL,
+
+    cantidad INT NOT NULL,
+
+    referencia_tipo VARCHAR(30),
+
+    referencia_id INT,
+
+    fecha_movimiento DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (id_producto)
+    REFERENCES Producto(id_producto)
+);
+
+-- =====================================================
+-- CAJA
+-- =====================================================
+
+CREATE TABLE Caja (
+    id_caja INT AUTO_INCREMENT PRIMARY KEY,
+
+    nombre VARCHAR(60) DEFAULT 'Caja Principal',
+
+    descripcion TEXT,
+
+    activa TINYINT(1) DEFAULT 1
+);
+
+-- =====================================================
+-- CORTE DE CAJA
+-- =====================================================
+
+CREATE TABLE Corte_Caja (
+    id_corte INT AUTO_INCREMENT PRIMARY KEY,
+
+    id_caja INT NOT NULL,
+
+    id_usuario INT NOT NULL,
+
+    fecha_apertura DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    fondo_apertura DECIMAL(10,2) DEFAULT 0.00,
+
+    fecha_cierre DATETIME,
+
+    fondo_cierre DECIMAL(10,2),
+
+    total_ventas DECIMAL(10,2),
+
+    notas TEXT,
+
+    FOREIGN KEY (id_caja)
+    REFERENCES Caja(id_caja),
+
+    FOREIGN KEY (id_usuario)
+    REFERENCES Usuario(id_usuario)
+);
+
+-- =====================================================
+-- AUDITORÍA
+-- =====================================================
+
+CREATE TABLE Auditoria (
+    id_auditoria INT AUTO_INCREMENT PRIMARY KEY,
+
+    id_usuario INT,
+
+    tabla_afectada VARCHAR(60),
+
+    operacion ENUM(
+        'INSERT',
+        'UPDATE',
+        'DELETE'
+    ),
+
+    id_registro INT,
+
+    detalle TEXT,
+
+    fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (id_usuario)
+    REFERENCES Usuario(id_usuario)
+    ON DELETE SET NULL
+);
+
+-- =====================================================
+-- CONFIGURACIÓN TIENDA
+-- =====================================================
+
+CREATE TABLE Configuracion_Tienda (
+    id_config INT AUTO_INCREMENT PRIMARY KEY,
+
+    clave VARCHAR(60) UNIQUE NOT NULL,
+
+    valor TEXT,
+
+    descripcion VARCHAR(120)
+);
